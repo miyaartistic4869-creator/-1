@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>体調・スケジュール管理アプリ</title>
+  <!-- X(Twitter)やSNSでシェアした際の見出し設定 -->
+  <meta name="description" content="日々の飲水量・血圧・体重・体温の推移グラフと、医療関係者・家族・職場への伝達ToDo＆スケジュールを管理できるWebアプリです。" />
+  <meta property="og:title" content="体調・スケジュール管理アプリ" />
+  <meta property="og:description" content="飲水量・血圧・体重・体温の記録と推移グラフ、伝達ToDoをブラウザだけで簡単管理。" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary" />
+  <!-- グラフ描画ライブラリ（Chart.js） -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #f2f2f7;
+      --card: #ffffff;
+      --sub-bg: #f8f9fc;
+      --text: #1c1c1e;
+      --muted: #6c6c70;
+      --border: #e5e5ea;
+      --indigo: #4f46e5;
+      --indigo-soft: rgba(79, 70, 229, 0.12);
+      --blue: #007aff;
+      --red: #ef4444;
+      --yellow: #eab308;
+      --orange: #f97316;
+      --teal: #0d9488;
+      --green: #16a34a;
+      --purple: #9333ea;
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+      padding-bottom: 48px;
+    }
+    .app-shell { max-width: 820px; margin: 0 auto; }
+
+    /* 上部固定ヘッダー */
+    .top-bar {
+      position: sticky; top: 0; z-index: 50;
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 12px;
+    }
+    .top-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 6px; margin-bottom: 8px; flex-wrap: wrap;
+    }
+    .app-title { font-size: 16px; font-weight: 800; color: var(--text); margin: 0; }
+    .toolbar-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+    .btn {
+      border: none; border-radius: 8px; padding: 7px 11px;
+      font-size: 12px; font-weight: 700; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+      transition: opacity 0.15s;
+    }
+    .btn:active { opacity: 0.7; }
+    .btn:disabled { opacity: 0.38; cursor: not-allowed; }
+    .btn-indigo { background: var(--indigo); color: #fff; }
+    .btn-indigo-soft { background: var(--indigo-soft); color: var(--indigo); }
+    .btn-blue { background: var(--blue); color: #fff; }
+    .btn-blue-soft { background: rgba(0, 122, 255, 0.12); color: var(--blue); }
+    .btn-red { background: var(--red); color: #fff; }
+    .btn-red-soft { background: rgba(239, 68, 68, 0.12); color: var(--red); }
+    .btn-teal { background: var(--teal); color: #fff; }
+    .btn-teal-soft { background: rgba(13, 148, 136, 0.14); color: var(--teal); }
+    .btn-orange { background: var(--orange); color: #fff; }
+    .btn-gray { background: #e5e5ea; color: #3a3a3c; }
+    .btn-full { width: 100%; padding: 11px; font-size: 14px; }
+
+    /* メインタブ */
+    .tab-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+    .tab-btn {
+      border: none; border-radius: 10px; padding: 10px; font-size: 13px; font-weight: 700;
+      cursor: pointer; background: var(--indigo-soft); color: var(--indigo);
+    }
+    .tab-btn.active { background: var(--indigo); color: #fff; }
+
+    /* 日付ナビ */
+    .date-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .date-nav-center { display: flex; align-items: center; gap: 6px; }
+    input[type="date"], input[type="time"], input[type="number"], input[type="text"], select {
+      border: 1px solid #d1d1d6; border-radius: 8px; padding: 7px 9px;
+      font-size: 14px; background: #fff; color: var(--text); font-family: inherit;
+    }
+    input[type="text"], input[type="number"] { width: 100%; }
+
+    /* カード・レイアウト */
+    .content { padding: 14px 12px; display: flex; flex-direction: column; gap: 14px; }
+    .card {
+      background: var(--card); border-radius: var(--radius); padding: 14px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; margin-bottom: 10px; flex-wrap: wrap;
+    }
+    .card-title { font-size: 15px; font-weight: 800; margin: 0; }
+    .sub-box { background: var(--sub-bg); border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+    .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .row-nowrap { display: flex; align-items: center; gap: 8px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .time-block-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+    .time-block-tile {
+      background: var(--sub-bg); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 6px; text-align: center;
+    }
+    .caption { font-size: 11px; color: var(--muted); }
+    .bold { font-weight: 700; }
+
+    /* プログレスバー */
+    .progress-track {
+      width: 100%; height: 14px; background: #e5e5ea; border-radius: 99px; overflow: hidden; margin: 8px 0 6px;
+    }
+    .progress-fill { height: 100%; border-radius: 99px; transition: width 0.25s ease; }
+
+    /* リスト項目 */
+    .list-item {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--border);
+    }
+    .list-item:last-child { border-bottom: none; }
+    .badge {
+      display: inline-block; font-size: 11px; font-weight: 700;
+      padding: 2px 7px; border-radius: 6px;
+    }
+    .strikethrough { text-decoration: line-through; color: var(--muted); }
+
+    /* フィルターピル */
+    .pill-bar { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 8px; }
+    .pill {
+      border: 1px solid var(--border); background: var(--sub-bg); color: var(--text);
+      border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 700;
+      cursor: pointer; white-space: nowrap;
+    }
+    .pill.active { background: var(--indigo); color: #fff; border-color: var(--indigo); }
+
+    /* モーダル */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      z-index: 100; display: none; align-items: flex-end; justify-content: center;
+    }
+    .modal-backdrop.open { display: flex; }
+    @media (min-width: 640px) { .modal-backdrop { align-items: center; } }
+    .modal-panel {
+      background: #fff; width: 100%; max-width: 760px; max-height: 92vh;
+      border-radius: 18px 18px 0 0; overflow: hidden; display: flex; flex-direction: column;
+    }
+    @media (min-width: 640px) { .modal-panel { border-radius: 16px; max-height: 88vh; } }
+    .modal-header {
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .modal-body { padding: 14px 16px; overflow-y: auto; flex: 1; }
+
+    /* グラフコンテナ（iPhoneでも横軸MM/ddが省略されない横スクロール設計） */
+    .chart-scroll { overflow-x: auto; padding-bottom: 6px; }
+    .chart-box { position: relative; height: 220px; }
+
+    /* プライバシー注記 */
+    .privacy-note {
+      text-align: center; font-size: 11px; color: var(--muted);
+      padding: 10px 14px; line-height: 1.5;
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+<div class="app-shell">
+  <!-- 上部バー -->
+  <header class="top-bar">
+    <div class="top-row">
+      <h1 class="app-title">体調・スケジュール管理</h1>
+      <div class="toolbar-btns">
+        <button id="btnUndo" class="btn btn-blue-soft" onclick="performUndo()">↩ 戻す(0)</button>
+        <button id="btnRedo" class="btn btn-indigo-soft" onclick="performRedo()">↪ やり直し(0)</button>
+        <button class="btn btn-indigo-soft" onclick="openBackupModal()">⇅ 共有/保存</button>
+      </div>
+    </div>
+
+    <div class="tab-bar">
+      <button id="tabHealth" class="tab-btn active" onclick="switchTab('health')">💧 水分・血圧</button>
+      <button id="tabSchedule" class="tab-btn" onclick="switchTab('schedule')">📅 スケジュール・ToDo</button>
+    </div>
+
+    <div class="date-nav">
+      <button class="btn btn-indigo-soft" onclick="shiftDate(-1)">◀ 前日</button>
+      <div class="date-nav-center">
+        <input type="date" id="selectedDateInput" onchange="onDateChange(this.value)" />
+        <button class="btn btn-blue-soft" onclick="goToday()">今日</button>
+      </div>
+      <button class="btn btn-indigo-soft" onclick="shiftDate(1)">翌日 ▶</button>
+    </div>
+  </header>
+
+  <!-- メインエリア：タブ1 水分・血圧 -->
+  <main id="viewHealth" class="content">
+    <!-- 1. 体重・体温 -->
+    <section class="card">
+      <div class="card-header">
+        <h2 class="card-title" style="color:var(--indigo)">⚖️ 体重・体温を記録する</h2>
+        <button class="btn btn-indigo-soft" onclick="openHistoryModal('wt')">📅 全履歴・検索</button>
+      </div>
+      <div class="sub-box">
+        <div class="row" style="justify-content:space-between">
+          <div class="row">
+            <span class="bold" style="font-size:13px">標準体重 (DW):</span>
+            <input type="number" step="0.1" id="dwInput" style="width:88px;font-weight:800;color:var(--indigo)" onchange="onDWChange()" />
+            <span class="bold">kg</span>
+          </div>
+          <div id="dwDiffDisplay" class="bold" style="font-size:13px;color:var(--blue)"></div>
+        </div>
+      </div>
+      <div class="row" style="margin-bottom:8px">
+        <span style="font-size:13px">時刻:</span>
+        <input type="time" id="wtTimeInput" />
+        <button class="btn btn-indigo-soft" onclick="setNowTime('wtTimeInput')">現在の時刻</button>
+        <input type="text" id="wtNoteInput" placeholder="メモ (起床時・透析前後など)" style="flex:1;min-width:130px" />
+      </div>
+      <div class="grid-2" style="margin-bottom:10px">
+        <div>
+          <div class="caption bold">体重 (kg・任意)</div>
+          <input type="number" step="0.1" id="wtWeightInput" placeholder="例: 61.5" oninput="updateLiveDWPreview()" />
+        </div>
+        <div>
+          <div class="caption bold" style="color:var(--orange)">体温 (℃・任意)</div>
+          <input type="number" step="0.1" id="wtTempInput" placeholder="例: 36.5" />
+        </div>
+      </div>
+      <button class="btn btn-indigo btn-full" onclick="addWTEntry()" id="btnAddWT">体重・体温を追加する</button>
+      <div id="dayWTList" style="margin-top:10px"></div>
+    </section>
+
+    <!-- 2. 水分サマリー -->
+    <section class="card">
+      <div class="sub-box" style="background:var(--indigo-soft)">
+        <div class="row" style="justify-content:space-between">
+          <div>
+            <div id="limitHeaderText" class="bold" style="color:var(--indigo);font-size:14px">最低値: 800ml / 上限: 900ml</div>
+            <div id="pastLimitNotice" class="caption bold hidden"></div>
+          </div>
+          <button class="btn btn-indigo" onclick="openLimitModal()">⚙ 上限設定</button>
+        </div>
+      </div>
+
+      <div class="row" style="justify-content:space-between;align-items:flex-end">
+        <div>
+          <div id="waterRatioLabel" class="caption">当日中の総飲水量 (上限の 0%)</div>
+          <div id="totalWaterText" style="font-size:30px;font-weight:800">0 ml</div>
+        </div>
+        <div style="text-align:right">
+          <div id="waterRemainMaxLabel" class="caption">最低値まで残り (上限まで 900ml)</div>
+          <div id="remainMinText" style="font-size:24px;font-weight:800;color:var(--blue)">800 ml</div>
+        </div>
+      </div>
+
+      <div class="progress-track"><div id="waterProgressFill" class="progress-fill" style="width:0%;background:var(--blue)"></div></div>
+      <div class="row" style="justify-content:space-between;font-size:11px;margin-bottom:8px">
+        <span style="color:var(--blue)">● 60%未満: 安全</span>
+        <span style="color:#ca8a04">● 60%以上: 注意</span>
+        <span style="color:var(--red)">● 80%以上: 警告</span>
+      </div>
+      <div id="overLimitWarning" class="hidden" style="color:var(--red);font-size:12px;font-weight:700;margin-bottom:8px"></div>
+
+      <button class="btn btn-indigo btn-full" onclick="openGraphModal()" style="margin-bottom:8px">📈 水分・血圧の推移グラフを見る</button>
+      <div class="grid-2">
+        <button class="btn btn-blue-soft" onclick="openHistoryModal('water')" id="btnQuickWaterHist">💧 水分の全履歴 (0件)</button>
+        <button class="btn btn-red-soft" onclick="openHistoryModal('bp')" id="btnQuickBPHist">❤️ 血圧の全履歴 (0件)</button>
+      </div>
+    </section>
+
+    <!-- 3. 時間帯別の水分量 -->
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <h2 class="card-title">時間帯別の水分量</h2>
+          <div id="timeBlockRangeCaption" class="caption"></div>
+        </div>
+        <button class="btn btn-gray" onclick="openTimeBlockModal()">⚙ 時間帯設定</button>
+      </div>
+      <div id="timeBlockGrid" class="time-block-grid"></div>
+    </section>
+
+    <!-- 4. 水分入力 -->
+    <section class="card">
+      <div class="card-header">
+        <h2 class="card-title" id="waterInputTitle">💧 水分を記録する</h2>
+      </div>
+      <div class="row" style="margin-bottom:8px">
+        <input type="time" id="waterStartInput" onchange="syncWaterEndTime()" />
+        <span>〜</span>
+        <input type="time" id="waterEndInput" />
+        <button class="btn btn-blue-soft" onclick="setWaterNow()">現在の時刻</button>
+      </div>
+      <div class="row" style="margin-bottom:10px">
+        <input type="number" id="waterAmountInput" placeholder="飲水量 (ml)" style="width:125px" />
+        <input type="text" id="waterNoteInput" placeholder="メモ (薬、お茶、食事など)" style="flex:1;min-width:140px" />
+      </div>
+      <button class="btn btn-blue btn-full" onclick="addWaterEntry()" style="margin-bottom:8px">水分を追加する</button>
+      <div class="grid-4">
+        <button class="btn btn-blue-soft" onclick="quickAddWater(50)">+50ml</button>
+        <button class="btn btn-blue-soft" onclick="quickAddWater(100)">+100ml</button>
+        <button class="btn btn-blue-soft" onclick="quickAddWater(150)">+150ml</button>
+        <button class="btn btn-blue-soft" onclick="quickAddWater(200)">+200ml</button>
+      </div>
+    </section>
+
+    <!-- 5. 選択日の水分履歴 -->
+    <section class="card">
+      <div class="card-header">
+        <h2 class="card-title" id="dayWaterHistTitle">💧 選択日の水分履歴 (0件)</h2>
+        <button class="btn btn-indigo-soft" onclick="openHistoryModal('water')">📅 全履歴・検索</button>
+      </div>
+      <div id="dayWaterList"></div>
+    </section>
+
+    <!-- 6. 血圧記録 ＆ 履歴 -->
+    <section class="card">
+      <div class="card-header">
+        <h2 class="card-title" style="color:var(--red)">❤️ 血圧を記録する</h2>
+        <button class="btn btn-red-soft" onclick="openHistoryModal('bp')">📅 全履歴・検索</button>
+      </div>
+      <div class="row" style="margin-bottom:8px">
+        <span style="font-size:13px">時刻:</span>
+        <input type="time" id="bpTimeInput" />
+        <button class="btn btn-red-soft" onclick="setNowTime('bpTimeInput')">現在の時刻</button>
+        <input type="text" id="bpNoteInput" placeholder="メモ (朝・透析前など)" style="flex:1;min-width:130px" />
+      </div>
+      <div class="grid-3" style="margin-bottom:10px">
+        <div><div class="caption">上 (収縮期)</div><input type="number" id="bpSysInput" placeholder="130" /></div>
+        <div><div class="caption">下 (拡張期)</div><input type="number" id="bpDiaInput" placeholder="80" /></div>
+        <div><div class="caption">脈拍 (任意)</div><input type="number" id="bpPulseInput" placeholder="70" /></div>
+      </div>
+      <button class="btn btn-red btn-full" onclick="addBPEntry()" id="btnAddBP">血圧を追加する</button>
+      <div id="dayBPList" style="margin-top:10px"></div>
+    </section>
+  </main>
+
+  <!-- メインエリア：タブ2 スケジュール・ToDo -->
+  <main id="viewSchedule" class="content hidden">
+    <!-- ToDo・伝達メモ登録 -->
+    <section class="card">
+      <div class="card-header">
+        <h2 class="card-title" style="color:var(--teal)">📝 気づき・伝達ToDo登録</h2>
+        <div class="row">
+          <select id="todoAudienceSelect" onchange="onTodoAudienceChange()" style="font-size:12px;font-weight:700;padding:5px 7px">
+            <option value="medicalStaff">🏥 医療関係者</option>
+            <option value="family">🏠 家族</option>
+            <option value="workplace">🏢 職場</option>
+            <option value="personal">📌 自分用(伝達不要)</option>
+          </select>
+          <select id="todoReportTypeSelect" onchange="renderTodoFormFields()" style="font-size:12px;font-weight:700;padding:5px 7px">
+            <option value="required">👨‍⚕️ 伝達：必要</option>
+            <option value="notRequired">🏥 伝達：不要</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="todoSelectionSummary" class="sub-box caption" style="margin-bottom:8px"></div>
+
+      <!-- 日跨ぎ対応の日付選択 -->
+      <div class="sub-box">
+        <div class="row" style="justify-content:space-between;margin-bottom:6px">
+          <span class="caption bold" style="color:var(--indigo)">📅 対象日・期間 (日跨ぎ可):</span>
+          <button class="btn btn-indigo-soft" style="padding:3px 8px;font-size:11px" onclick="syncTodoDatesToSelected()">選択日に揃える</button>
+        </div>
+        <div class="row">
+          <input type="date" id="todoStartDateInput" onchange="ensureTodoEndDate()" />
+          <span class="bold">〜</span>
+          <input type="date" id="todoEndDateInput" />
+        </div>
+      </div>
+
+      <div id="todoRequiredFields">
+        <input type="text" id="todoSinceWhenInput" placeholder="いつ頃から？（任意 例: 昨日の夜から、透析中から）" style="margin-bottom:8px" />
+        <input type="text" id="todoSymptomInput" placeholder="どんな症状・伝えたいこと（例: チクチクする、痛み）" style="margin-bottom:8px" />
+        <div class="sub-box">
+          <div class="row" style="justify-content:space-between;margin-bottom:4px">
+            <span class="caption bold">つらさ・重要度 (10点満点)</span>
+            <span id="todoScoreLabel" class="bold" style="color:var(--blue)">3 / 10 点</span>
+          </div>
+          <input type="range" id="todoScoreRange" min="1" max="10" value="3" style="width:100%" oninput="updateScoreLabel(this.value)" />
+          <div class="caption">※1点: 問題ないレベル ／ 10点: すぐになんとかして欲しいレベル</div>
+        </div>
+        <input type="text" id="todoAdditionalInput" placeholder="その他・必要な情報（薬の有無、気づいたことなど）" style="margin-bottom:10px" />
+      </div>
+
+      <div id="todoSimpleFields" class="hidden">
+        <input type="text" id="todoSimpleTaskInput" placeholder="伝えること・やること（例: 入院日程の連絡、お風呂、準備）" style="margin-bottom:8px" />
+        <input type="text" id="todoSimpleNoteInput" placeholder="メモ・備考（任意）" style="margin-bottom:10px" />
+      </div>
+
+      <button class="btn btn-teal btn-full" onclick="addTodoItem()" id="btnAddTodo">ToDo・伝達メモを追加する</button>
+    </section>
+
+    <!-- 選択日のToDo一覧 -->
+    <section class="card">
+      <div class="card-header">
+        <h2 class="card-title" id="dayTodoListTitle">📝 選択日のToDo履歴 (0件)</h2>
+        <button class="btn btn-teal-soft" onclick="openHistoryModal('todo')">📅 全履歴・検索</button>
+      </div>
+      <div class="pill-bar" id="todoFilterPills"></div>
+      <div id="dayTodoList"></div>
+    </section>
+
+    <!-- 時間決まりの予定登録 -->
+    <section class="card">
+      <div class="card-header">
+        <h2 class="card-title" id="scheduleInputTitle">📌 時間決まりの予定を登録</h2>
+      </div>
+      <div class="row" style="margin-bottom:8px">
+        <input type="time" id="schedStartInput" onchange="syncSchedEndTime()" />
+        <span>〜</span>
+        <input type="time" id="schedEndInput" />
+        <button class="btn btn-indigo-soft" onclick="setSchedNow()">現在の時刻</button>
+      </div>
+      <input type="text" id="schedTitleInput" placeholder="用事・タイトル (例: 透析、受診、買い物)" style="margin-bottom:8px" />
+      <input type="text" id="schedLocInput" placeholder="場所 (例: クリニック、病院、自宅)" style="margin-bottom:8px" />
+      <input type="text" id="schedNoteInput" placeholder="備考・持ち物・メモなど" style="margin-bottom:10px" />
+      <button class="btn btn-indigo btn-full" onclick="addScheduleItem()">予定を追加する</button>
+      <div id="dayScheduleList" style="margin-top:10px"></div>
+    </section>
+  </main>
+
+  <div class="privacy-note">
+    🔒 入力したデータはお使いの端末のブラウザ内にのみ保存され、外部サーバーには送信されません。<br />
+    機種変更や複数端末での同期には右上の「⇅ 共有/保存」からJSONバックアップをご利用ください。
+  </div>
+</div>
+
+<!-- 汎用モーダル枠 -->
+<div id="modalBackdrop" class="modal-backdrop" onclick="if(event.target===this) closeModal()">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <h3 id="modalTitle" style="margin:0;font-size:15px;font-weight:800">モーダル</h3>
+      <button class="btn btn-gray" onclick="closeModal()">閉じる</button>
+    </div>
+    <div id="modalBody" class="modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ==================== 状態管理・初期データ ====================
+const STORAGE_KEY = "HealthScheduleWebApp_v1";
+const DAY_OFFSETS = [
+  { val: -2, label: "前々日" },
+  { val: -1, label: "前日" },
+  { val: 0, label: "当日" },
+  { val: 1, label: "翌日" },
+  { val: 2, label: "翌々日" }
+];
+const AUDIENCE_META = {
+  medicalStaff: { name: "医療関係者", iconName: "🏥 医療関係者", color: "#ef4444", bg: "rgba(239,68,68,0.14)" },
+  family:       { name: "家族",       iconName: "🏠 家族",       color: "#f97316", bg: "rgba(249,115,22,0.14)" },
+  workplace:    { name: "職場",       iconName: "🏢 職場",       color: "#4f46e5", bg: "rgba(79,70,229,0.14)" },
+  personal:     { name: "自分用",     iconName: "📌 自分用",     color: "#0d9488", bg: "rgba(13,148,136,0.14)" }
+};
+
+let state = {
+  dryWeight: 60.0,
+  waterLimitHistory: [
+    { id: uid(), effectiveDate: "2020-01-01", minLimit: 800, maxLimit: 900 }
+  ],
+  waterEntries: [],       // { id, date:'YYYY-MM-DD', startTime:'HH:mm', endTime:'HH:mm', amount, note }
+  bpEntries: [],          // { id, date:'YYYY-MM-DD', time:'HH:mm', systolic, diastolic, pulse, note }
+  wtEntries: [],          // { id, date:'YYYY-MM-DD', time:'HH:mm', weight, temperature, note }
+  todoItems: [],          // { id, date, endDate, targetAudience, reportType, sinceWhen, symptomOrTask, severityScore, additionalInfo, isCompleted }
+  schedules: [],          // { id, date, startTime, endTime, title, location, note, isCompleted }
+  timeBlocks: [
+    { id: uid(), name: "日勤・午前〜昼", startDayOffset: 0, startHour: 6, startMinute: 0, endDayOffset: 0, endHour: 14, endMinute: 0 },
+    { id: uid(), name: "午後〜夜", startDayOffset: 0, startHour: 14, startMinute: 0, endDayOffset: 0, endHour: 22, endMinute: 0 },
+    { id: uid(), name: "夜間〜翌朝", startDayOffset: 0, startHour: 22, startMinute: 0, endDayOffset: 1, endHour: 6, endMinute: 0 }
+  ]
+};
+
+let undoStack = [];
+let redoStack = [];
+let selectedDate = todayStr();
+let activeTab = "health";
+let todoFilter = "all";
+let graphSpan = "1w"; // 1w, 2w, 1m, 6m, 1y
+let showGraphRefLines = false;
+let activeCharts = [];
+
+function uid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+function pad(n) { return String(n).padStart(2, "0"); }
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+function nowTimeStr(addHours = 0) {
+  const d = new Date();
+  d.setHours(d.getHours() + addHours);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function addHourToTimeStr(hhmm, hours = 1) {
+  const [h, m] = (hhmm || "00:00").split(":").map(Number);
+  const total = ((h + hours) % 24 + 24) % 24;
+  return `${pad(total)}:${pad(m || 0)}`;
+}
+function formatDisplayDate(yyyyMmDd) {
+  const [y, m, d] = yyyyMmDd.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const w = ["日", "月", "火", "水", "木", "金", "土"][dt.getDay()];
+  return `${m}月${d}日(${w})`;
+}
+function formatMMdd(yyyyMmDd, includeYear = false) {
+  const [y, m, d] = yyyyMmDd.split("-");
+  return includeYear ? `${y.slice(2)}/${m}/${d}` : `${m}/${d}`;
+}
+function shiftDateStr(yyyyMmDd, deltaDays) {
+  const [y, m, d] = yyyyMmDd.split("-").map(Number);
+  const dt = new Date(y, m - 1, d + deltaDays);
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+}
+function shiftMonthsStr(yyyyMmDd, deltaMonths) {
+  const [y, m, d] = yyyyMmDd.split("-").map(Number);
+  const dt = new Date(y, m - 1 + deltaMonths, d);
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+}
+function offsetLabel(off) {
+  const found = DAY_OFFSETS.find(o => o.val === Number(off));
+  return found ? found.label : `${off}日`;
+}
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+
+// ==================== 永続化・Undo/Redo ====================
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      state = { ...state, ...parsed };
+      if (!state.waterLimitHistory || state.waterLimitHistory.length === 0) {
+        state.waterLimitHistory = [{ id: uid(), effectiveDate: "2020-01-01", minLimit: 800, maxLimit: 900 }];
+      }
+    }
+  } catch (e) { console.error(e); }
+}
+function saveState() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+}
+function mutateState(fn) {
+  undoStack.push(JSON.stringify(state));
+  if (undoStack.length > 10) undoStack.shift();
+  redoStack = [];
+  fn();
+  saveState();
+  renderAll();
+}
+function performUndo() {
+  if (!undoStack.length) return;
+  redoStack.push(JSON.stringify(state));
+  state = JSON.parse(undoStack.pop());
+  saveState();
+  renderAll();
+}
+function performRedo() {
+  if (!redoStack.length) return;
+  undoStack.push(JSON.stringify(state));
+  state = JSON.parse(redoStack.pop());
+  saveState();
+  renderAll();
+}
+
+// ==================== 水分設定履歴・色判定ロジック ====================
+function resolveLimitsForDate(dateStr) {
+  const sorted = [...state.waterLimitHistory].sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate));
+  const latest = sorted[sorted.length - 1];
+  let matched = sorted[0];
+  for (const item of sorted) {
+    if (item.effectiveDate <= dateStr) matched = item;
+  }
+  const isLatest = (matched.id === latest.id) && (dateStr >= latest.effectiveDate || sorted.length === 1);
+  const isBoundary = sorted.slice(1).some(x => x.effectiveDate === dateStr);
+  return { minLimit: matched.minLimit, maxLimit: matched.maxLimit, isLatest, isBoundary };
+}
+function waterBarColor(amount, maxLimit, isLatest) {
+  const ratio = amount / Math.max(maxLimit, 1);
+  if (ratio >= 0.8) return isLatest ? "#ef4444" : "rgba(239,68,68,0.45)";
+  if (ratio >= 0.6) return isLatest ? "#eab308" : "rgba(234,179,8,0.48)";
+  return isLatest ? "#007aff" : "rgba(13,148,136,0.48)";
+}
+
+// ==================== ナビゲーション・時刻補助 ====================
+function switchTab(tab) {
+  activeTab = tab;
+  document.getElementById("tabHealth").classList.toggle("active", tab === "health");
+  document.getElementById("tabSchedule").classList.toggle("active", tab === "schedule");
+  document.getElementById("viewHealth").classList.toggle("hidden", tab !== "health");
+  document.getElementById("viewSchedule").classList.toggle("hidden", tab !== "schedule");
+}
+function onDateChange(val) {
+  if (!val) return;
+  selectedDate = val;
+  syncTodoDatesToSelected();
+  renderAll();
+}
+function shiftDate(delta) {
+  selectedDate = shiftDateStr(selectedDate, delta);
+  document.getElementById("selectedDateInput").value = selectedDate;
+  syncTodoDatesToSelected();
+  renderAll();
+}
+function goToday() {
+  selectedDate = todayStr();
+  document.getElementById("selectedDateInput").value = selectedDate;
+  syncTodoDatesToSelected();
+  renderAll();
+}
+function setNowTime(id) { document.getElementById(id).value = nowTimeStr(0); }
+function setWaterNow() {
+  const now = nowTimeStr(0);
+  document.getElementById("waterStartInput").value = now;
+  document.getElementById("waterEndInput").value = addHourToTimeStr(now, 1);
+}
+function syncWaterEndTime() {
+  const s = document.getElementById("waterStartInput").value;
+  if (s) document.getElementById("waterEndInput").value = addHourToTimeStr(s, 1);
+}
+function setSchedNow() {
+  const now = nowTimeStr(0);
+  document.getElementById("schedStartInput").value = now;
+  document.getElementById("schedEndInput").value = addHourToTimeStr(now, 1);
+}
+function syncSchedEndTime() {
+  const s = document.getElementById("schedStartInput").value;
+  if (s) document.getElementById("schedEndInput").value = addHourToTimeStr(s, 1);
+}
+function syncTodoDatesToSelected() {
+  document.getElementById("todoStartDateInput").value = selectedDate;
+  document.getElementById("todoEndDateInput").value = selectedDate;
+}
+function ensureTodoEndDate() {
+  const s = document.getElementById("todoStartDateInput").value;
+  const e = document.getElementById("todoEndDateInput").value;
+  if (s && (!e || e < s)) document.getElementById("todoEndDateInput").value = s;
+}
+
+// ==================== データ追加・削除アクション ====================
+function onDWChange() {
+  const val = parseFloat(document.getElementById("dwInput").value);
+  if (val > 0) mutateState(() => { state.dryWeight = val; });
+}
+function updateLiveDWPreview() { renderWT(); }
+
+function addWTEntry() {
+  const w = parseFloat(document.getElementById("wtWeightInput").value);
+  const t = parseFloat(document.getElementById("wtTempInput").value);
+  const weight = (!isNaN(w) && w > 0) ? w : null;
+  const temperature = (!isNaN(t) && t > 0) ? t : null;
+  if (weight === null && temperature === null) return alert("体重または体温のどちらか1つ以上を入力してください。");
+  const time = document.getElementById("wtTimeInput").value || nowTimeStr(0);
+  const note = document.getElementById("wtNoteInput").value.trim();
+  mutateState(() => {
+    state.wtEntries.push({ id: uid(), date: selectedDate, time, weight, temperature, note });
+  });
+  document.getElementById("wtWeightInput").value = "";
+  document.getElementById("wtTempInput").value = "";
+  document.getElementById("wtNoteInput").value = "";
+}
+function deleteWTEntry(id) { mutateState(() => { state.wtEntries = state.wtEntries.filter(x => x.id !== id); }); }
+
+function addWaterEntry() {
+  const amount = parseFloat(document.getElementById("waterAmountInput").value);
+  if (isNaN(amount) || amount <= 0) return alert("飲水量 (ml) を入力してください。");
+  const startTime = document.getElementById("waterStartInput").value || nowTimeStr(0);
+  const endTime = document.getElementById("waterEndInput").value || addHourToTimeStr(startTime, 1);
+  const note = document.getElementById("waterNoteInput").value.trim();
+  mutateState(() => {
+    state.waterEntries.push({ id: uid(), date: selectedDate, startTime, endTime, amount, note });
+  });
+  document.getElementById("waterAmountInput").value = "";
+  document.getElementById("waterNoteInput").value = "";
+}
+function quickAddWater(ml) {
+  const startTime = document.getElementById("waterStartInput").value || nowTimeStr(0);
+  const endTime = document.getElementById("waterEndInput").value || addHourToTimeStr(startTime, 1);
+  const note = document.getElementById("waterNoteInput").value.trim() || "クイック記録";
+  mutateState(() => {
+    state.waterEntries.push({ id: uid(), date: selectedDate, startTime, endTime, amount: ml, note });
+  });
+  document.getElementById("waterNoteInput").value = "";
+}
+function deleteWaterEntry(id) { mutateState(() => { state.waterEntries = state.waterEntries.filter(x => x.id !== id); }); }
+
+function addBPEntry() {
+  const sys = parseInt(document.getElementById("bpSysInput").value, 10);
+  const dia = parseInt(document.getElementById("bpDiaInput").value, 10);
+  const pulseRaw = parseInt(document.getElementById("bpPulseInput").value, 10);
+  if (isNaN(sys) || sys <= 0 || isNaN(dia) || dia <= 0) return alert("上（収縮期）と下（拡張期）を入力してください。");
+  const time = document.getElementById("bpTimeInput").value || nowTimeStr(0);
+  const note = document.getElementById("bpNoteInput").value.trim();
+  mutateState(() => {
+    state.bpEntries.push({ id: uid(), date: selectedDate, time, systolic: sys, diastolic: dia, pulse: isNaN(pulseRaw) ? null : pulseRaw, note });
+  });
+  document.getElementById("bpSysInput").value = "";
+  document.getElementById("bpDiaInput").value = "";
+  document.getElementById("bpPulseInput").value = "";
+  document.getElementById("bpNoteInput").value = "";
+}
+function deleteBPEntry(id) { mutateState(() => { state.bpEntries = state.bpEntries.filter(x => x.id !== id); }); }
+
+function onTodoAudienceChange() {
+  const aud = document.getElementById("todoAudienceSelect").value;
+  document.getElementById("todoReportTypeSelect").value = (aud === "medicalStaff") ? "required" : "notRequired";
+  renderTodoFormFields();
+}
+function updateScoreLabel(v) {
+  const n = Number(v);
+  const el = document.getElementById("todoScoreLabel");
+  el.textContent = `${n} / 10 点`;
+  el.style.color = n >= 8 ? "var(--red)" : (n >= 5 ? "var(--orange)" : "var(--blue)");
+}
+function renderTodoFormFields() {
+  const aud = document.getElementById("todoAudienceSelect").value;
+  const rep = document.getElementById("todoReportTypeSelect").value;
+  const meta = AUDIENCE_META[aud];
+  const repLabel = rep === "required"
+    ? "ドクター伝達：必要（症状・点数・いつから等を記録）"
+    : "ドクター伝達：不要（連絡事項・通院・入浴・準備などのToDo）";
+  document.getElementById("todoSelectionSummary").textContent = `選択中：伝える先【${meta.name}】 ／ ${repLabel}`;
+  document.getElementById("todoRequiredFields").classList.toggle("hidden", rep !== "required");
+  document.getElementById("todoSimpleFields").classList.toggle("hidden", rep === "required");
+  const btn = document.getElementById("btnAddTodo");
+  btn.textContent = `ToDo・伝達メモ（${meta.name}）を追加する`;
+  btn.style.background = meta.color;
+}
+function addTodoItem() {
+  const aud = document.getElementById("todoAudienceSelect").value;
+  const rep = document.getElementById("todoReportTypeSelect").value;
+  const sDate = document.getElementById("todoStartDateInput").value || selectedDate;
+  const eDate = document.getElementById("todoEndDateInput").value || sDate;
+  const startDate = sDate <= eDate ? sDate : eDate;
+  const endDate = sDate <= eDate ? eDate : sDate;
+
+  let symptomOrTask = "", sinceWhen = "", additionalInfo = "", severityScore = 1;
+  if (rep === "required") {
+    symptomOrTask = document.getElementById("todoSymptomInput").value.trim();
+    sinceWhen = document.getElementById("todoSinceWhenInput").value.trim();
+    additionalInfo = document.getElementById("todoAdditionalInput").value.trim();
+    severityScore = Number(document.getElementById("todoScoreRange").value);
+  } else {
+    symptomOrTask = document.getElementById("todoSimpleTaskInput").value.trim();
+    additionalInfo = document.getElementById("todoSimpleNoteInput").value.trim();
+  }
+  if (!symptomOrTask) return alert("内容を入力してください。");
+
+  mutateState(() => {
+    state.todoItems.push({
+      id: uid(), date: startDate, endDate, targetAudience: aud, reportType: rep,
+      sinceWhen, symptomOrTask, severityScore, additionalInfo, isCompleted: false
+    });
+  });
+  document.getElementById("todoSymptomInput").value = "";
+  document.getElementById("todoSinceWhenInput").value = "";
+  document.getElementById("todoAdditionalInput").value = "";
+  document.getElementById("todoSimpleTaskInput").value = "";
+  document.getElementById("todoSimpleNoteInput").value = "";
+}
+function toggleTodo(id) {
+  mutateState(() => {
+    const t = state.todoItems.find(x => x.id === id);
+    if (t) t.isCompleted = !t.isCompleted;
+  });
+}
+function deleteTodo(id) { mutateState(() => { state.todoItems = state.todoItems.filter(x => x.id !== id); }); }
+
+function addScheduleItem() {
+  const title = document.getElementById("schedTitleInput").value.trim();
+  if (!title) return alert("用事・タイトルを入力してください。");
+  const startTime = document.getElementById("schedStartInput").value || nowTimeStr(0);
+  const endTime = document.getElementById("schedEndInput").value || addHourToTimeStr(startTime, 1);
+  const location = document.getElementById("schedLocInput").value.trim();
+  const note = document.getElementById("schedNoteInput").value.trim();
+  mutateState(() => {
+    state.schedules.push({ id: uid(), date: selectedDate, startTime, endTime, title, location, note, isCompleted: false });
+  });
+  document.getElementById("schedTitleInput").value = "";
+  document.getElementById("schedLocInput").value = "";
+  document.getElementById("schedNoteInput").value = "";
+}
+function toggleSchedule(id) {
+  mutateState(() => {
+    const s = state.schedules.find(x => x.id === id);
+    if (s) s.isCompleted = !s.isCompleted;
+  });
+}
+function deleteSchedule(id) { mutateState(() => { state.schedules = state.schedules.filter(x => x.id !== id); }); }
+
+// ==================== メイン描画 ====================
+function renderAll() {
+  document.getElementById("btnUndo").textContent = `↩ 戻す(${undoStack.length})`;
+  document.getElementById("btnUndo").disabled = undoStack.length === 0;
+  document.getElementById("btnRedo").textContent = `↪ やり直し(${redoStack.length})`;
+  document.getElementById("btnRedo").disabled = redoStack.length === 0;
+  document.getElementById("selectedDateInput").value = selectedDate;
+
+  renderWT();
+  renderWaterSummaryAndList();
+  renderTimeBlocks();
+  renderBP();
+  renderTodoList();
+  renderScheduleList();
+}
+
+function renderWT() {
+  document.getElementById("dwInput").value = state.dryWeight.toFixed(1);
+  const dayList = state.wtEntries.filter(x => x.date === selectedDate).sort((a, b) => a.time.localeCompare(b.time));
+  document.getElementById("btnAddWT").textContent = `体重・体温を追加する（本日 ${dayList.length} 件記録済み）`;
+
+  const typingW = parseFloat(document.getElementById("wtWeightInput").value);
+  const latestW = (!isNaN(typingW) && typingW > 0) ? typingW : ([...dayList].reverse().find(x => x.weight !== null)?.weight ?? null);
+  const diffEl = document.getElementById("dwDiffDisplay");
+  if (latestW !== null && state.dryWeight > 0) {
+    const diff = latestW - state.dryWeight;
+    const pct = (diff / state.dryWeight) * 100;
+    const sign = diff >= 0 ? "+" : "";
+    diffEl.textContent = `DW増減: ${sign}${diff.toFixed(1)}kg (${sign}${pct.toFixed(1)}%)`;
+    diffEl.style.color = (diff > 2.0 || pct >= 5.0) ? "var(--red)" : "var(--blue)";
+  } else {
+    diffEl.textContent = "";
+  }
+
+  const container = document.getElementById("dayWTList");
+  if (!dayList.length) { container.innerHTML = ""; return; }
+  container.innerHTML = `<div class="caption bold" style="margin-bottom:4px">選択日の体重・体温履歴</div>` + dayList.map((e, i) => {
+    let wPart = "";
+    if (e.weight !== null) {
+      const diff = e.weight - state.dryWeight;
+      const pct = state.dryWeight > 0 ? (diff / state.dryWeight) * 100 : 0;
+      const sign = diff >= 0 ? "+" : "";
+      const col = (diff > 2.0 || pct >= 5.0) ? "var(--red)" : "var(--blue)";
+      wPart = `<span class="bold" style="color:var(--indigo)">${e.weight.toFixed(1)}kg</span> <span class="caption bold" style="color:${col}">(${sign}${diff.toFixed(1)}kg/${sign}${pct.toFixed(1)}%)</span> `;
+    }
+    const tPart = e.temperature !== null ? `<span class="bold" style="color:${e.temperature >= 37.0 ? "var(--red)" : "var(--orange)"}">${e.temperature.toFixed(1)}℃</span>` : "";
+    return `<div class="list-item">
+      <div style="font-size:13px">
+        <span class="caption bold">${i + 1}.</span> <span class="caption">${esc(e.time)}</span> ${wPart} ${tPart}
+        ${e.note ? `<div class="caption">${esc(e.note)}</div>` : ""}
+      </div>
+      <button class="btn btn-red-soft" onclick="deleteWTEntry('${e.id}')">削除</button>
+    </div>`;
+  }).join("");
+}
+
+function renderWaterSummaryAndList() {
+  const limits = resolveLimitsForDate(selectedDate);
+  const dayEntries = state.waterEntries.filter(x => x.date === selectedDate).sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const total = dayEntries.reduce((s, x) => s + x.amount, 0);
+  const ratio = Math.round((total / Math.max(limits.maxLimit, 1)) * 100);
+
+  document.getElementById("limitHeaderText").textContent = `最低値: ${Math.round(limits.minLimit)}ml / 上限: ${Math.round(limits.maxLimit)}ml`;
+  const pastNotice = document.getElementById("pastLimitNotice");
+  if (!limits.isLatest) {
+    pastNotice.classList.remove("hidden");
+    pastNotice.textContent = `※この日付は過去の設定値（${Math.round(limits.minLimit)}〜${Math.round(limits.maxLimit)}ml）で保持されています`;
+  } else {
+    pastNotice.classList.add("hidden");
+  }
+
+  document.getElementById("waterRatioLabel").textContent = `当日中の総飲水量 (上限の ${ratio}%)`;
+  const totalEl = document.getElementById("totalWaterText");
+  totalEl.textContent = `${Math.round(total)} ml`;
+  totalEl.style.color = total >= limits.maxLimit * 0.8 ? "var(--red)" : (total >= limits.maxLimit * 0.6 ? "var(--orange)" : "var(--text)");
+
+  document.getElementById("waterRemainMaxLabel").textContent = `最低値まで残り (上限まで ${Math.max(0, Math.round(limits.maxLimit - total))}ml)`;
+  const remEl = document.getElementById("remainMinText");
+  remEl.textContent = `${Math.max(0, Math.round(limits.minLimit - total))} ml`;
+  remEl.style.color = total >= limits.maxLimit * 0.8 ? "var(--red)" : (total >= limits.maxLimit * 0.6 ? "var(--orange)" : "var(--blue)");
+
+  const fill = document.getElementById("waterProgressFill");
+  fill.style.width = `${Math.min(100, (total / Math.max(limits.maxLimit, 1)) * 100)}%`;
+  fill.style.background = waterBarColor(total, limits.maxLimit, true);
+
+  const overEl = document.getElementById("overLimitWarning");
+  if (total > limits.maxLimit) {
+    overEl.classList.remove("hidden");
+    overEl.textContent = `⚠️ 当日の水分上限（${Math.round(limits.maxLimit)}ml）を ${Math.round(total - limits.maxLimit)}ml 超過しています`;
+  } else {
+    overEl.classList.add("hidden");
+  }
+
+  document.getElementById("btnQuickWaterHist").textContent = `💧 水分の全履歴 (${state.waterEntries.length}件)`;
+  document.getElementById("btnQuickBPHist").textContent = `❤️ 血圧の全履歴 (${state.bpEntries.length}件)`;
+  document.getElementById("waterInputTitle").textContent = `💧 水分を記録する (${formatDisplayDate(selectedDate)})`;
+  document.getElementById("dayWaterHistTitle").textContent = `💧 選択日の水分履歴 (${dayEntries.length}件)`;
+
+  const listEl = document.getElementById("dayWaterList");
+  if (!dayEntries.length) {
+    listEl.innerHTML = `<div class="caption">選択日の水分記録はまだありません（「全履歴・検索」から過去の記録を確認できます）</div>`;
+  } else {
+    listEl.innerHTML = dayEntries.map(e => `
+      <div class="list-item">
+        <div style="font-size:13px">
+          <span class="caption">${esc(e.startTime)}-${esc(e.endTime)}</span>
+          <span class="bold" style="color:var(--indigo);margin:0 6px">${Math.round(e.amount)} ml</span>
+          <span>${esc(e.note)}</span>
+        </div>
+        <button class="btn btn-red-soft" onclick="deleteWaterEntry('${e.id}')">削除</button>
+      </div>
+    `).join("");
+  }
+}
+
+function renderTimeBlocks() {
+  const grid = document.getElementById("timeBlockGrid");
+  const cap = document.getElementById("timeBlockRangeCaption");
+  if (!state.timeBlocks.length) {
+    cap.textContent = ""; grid.innerHTML = ""; return;
+  }
+  const first = state.timeBlocks[0], last = state.timeBlocks[state.timeBlocks.length - 1];
+  cap.textContent = `※集計範囲: ${offsetLabel(first.startDayOffset)}${first.startHour}:${pad(first.startMinute)} 〜 ${offsetLabel(last.endDayOffset)}${last.endHour}:${pad(last.endMinute)}`;
+
+  const [y, m, d] = selectedDate.split("-").map(Number);
+  const baseMs = new Date(y, m - 1, d, 0, 0, 0).getTime();
+
+  grid.innerHTML = state.timeBlocks.map(b => {
+    const sAbs = b.startDayOffset * 1440 + b.startHour * 60 + b.startMinute;
+    let eAbs = b.endDayOffset * 1440 + b.endHour * 60 + b.endMinute;
+    if (eAbs <= sAbs) eAbs += 1440;
+    const sMs = baseMs + sAbs * 60000;
+    const eMs = baseMs + eAbs * 60000;
+
+    const amt = state.waterEntries.filter(entry => {
+      const [ey, em, ed] = entry.date.split("-").map(Number);
+      const [eh, emin] = (entry.startTime || "00:00").split(":").map(Number);
+      const tMs = new Date(ey, em - 1, ed, eh, emin).getTime();
+      return tMs >= sMs && tMs < eMs;
+    }).reduce((s, x) => s + x.amount, 0);
+
+    const rangeTxt = `${offsetLabel(b.startDayOffset)}${b.startHour}:${pad(b.startMinute)}〜${offsetLabel(b.endDayOffset)}${b.endHour}:${pad(b.endMinute)}`;
+    return `<div class="time-block-tile">
+      <div class="caption bold" style="color:var(--text)">${esc(rangeTxt)}</div>
+      <div class="caption" style="margin:2px 0">${esc(b.name)}</div>
+      <div style="font-size:17px;font-weight:800;color:var(--indigo)">${Math.round(amt)} ml</div>
+    </div>`;
+  }).join("");
+}
+
+function renderBP() {
+  const dayList = state.bpEntries.filter(x => x.date === selectedDate).sort((a, b) => a.time.localeCompare(b.time));
+  document.getElementById("btnAddBP").textContent = `血圧を追加する（本日 ${dayList.length} 件記録済み）`;
+  const listEl = document.getElementById("dayBPList");
+  if (!dayList.length) {
+    listEl.innerHTML = `<div class="caption">選択日の血圧記録はまだありません（「全履歴・検索」から過去の記録を確認できます）</div>`;
+    return;
+  }
+  listEl.innerHTML = `<div class="caption bold" style="margin-bottom:4px">❤️ 選択日の血圧履歴 (${dayList.length}件)</div>` + dayList.map((e, i) => `
+    <div class="list-item">
+      <div style="font-size:13px">
+        <span class="caption bold">${i + 1}.</span> <span class="caption">${esc(e.time)}</span>
+        <span class="bold" style="font-size:15px;margin:0 4px;color:${(e.systolic>=140||e.diastolic>=90)?'var(--red)':'var(--text)'}">${e.systolic}/${e.diastolic}</span>
+        ${e.pulse ? `<span class="caption">脈${e.pulse}</span>` : ""}
+        ${e.note ? `<span class="caption" style="margin-left:4px">${esc(e.note)}</span>` : ""}
+      </div>
+      <button class="btn btn-red-soft" onclick="deleteBPEntry('${e.id}')">削除</button>
+    </div>
+  `).join("");
+}
+
+function renderTodoList() {
+  const scopes = [
+    { key: "all", label: "すべて" },
+    { key: "medicalStaff", label: "🏥 医療関係者" },
+    { key: "family", label: "🏠 家族" },
+    { key: "workplace", label: "🏢 職場" },
+    { key: "personal", label: "📌 自分用" }
+  ];
+  document.getElementById("todoFilterPills").innerHTML = scopes.map(s =>
+    `<button class="pill ${todoFilter === s.key ? "active" : ""}" onclick="todoFilter='${s.key}';renderTodoList()">${s.label}</button>`
+  ).join("");
+
+  const dayTodos = state.todoItems.filter(item => {
+    const s = item.date <= item.endDate ? item.date : item.endDate;
+    const e = item.date <= item.endDate ? item.endDate : item.date;
+    const inDay = selectedDate >= s && selectedDate <= e;
+    if (!inDay) return false;
+    return todoFilter === "all" || item.targetAudience === todoFilter;
+  });
+
+  document.getElementById("dayTodoListTitle").textContent = `📝 選択日のToDo履歴 (${dayTodos.length}件)`;
+  const el = document.getElementById("dayTodoList");
+  if (!dayTodos.length) {
+    el.innerHTML = `<div class="caption">選択日の該当ToDoはありません（「全履歴・検索」から全期間のToDoを確認できます）</div>`;
+    return;
+  }
+  el.innerHTML = dayTodos.map(item => {
+    const meta = AUDIENCE_META[item.targetAudience] || AUDIENCE_META.personal;
+    const isMulti = item.date !== item.endDate;
+    const rangeStr = isMulti ? `${formatMMdd(item.date)}〜${formatMMdd(item.endDate)}` : formatMMdd(item.date);
+    const scoreBg = item.severityScore >= 8 ? "var(--red)" : (item.severityScore >= 5 ? "var(--orange)" : "var(--blue)");
+    return `<div class="list-item">
+      <div style="flex:1">
+        <div class="row" style="margin-bottom:4px">
+          <input type="checkbox" ${item.isCompleted ? "checked" : ""} onchange="toggleTodo('${item.id}')" style="width:18px;height:18px" />
+          <span class="badge" style="background:${meta.bg};color:${meta.color}">伝える先: ${meta.iconName}</span>
+          <span class="badge" style="background:${isMulti ? "rgba(147,51,234,0.15)" : "#e5e5ea"};color:${isMulti ? "var(--purple)" : "var(--muted)"}">📅 ${rangeStr}</span>
+          ${item.reportType === "required" ? `<span class="badge" style="background:${scoreBg};color:#fff">${item.severityScore}/10点</span>` : ""}
+        </div>
+        <div class="bold ${item.isCompleted ? "strikethrough" : ""}" style="font-size:14px;margin-left:24px">${esc(item.symptomOrTask)}</div>
+        ${item.reportType === "required" && item.sinceWhen ? `<div class="caption" style="margin-left:24px">⏱ いつから: ${esc(item.sinceWhen)}</div>` : ""}
+        ${item.additionalInfo ? `<div class="caption" style="margin-left:24px">ℹ ${esc(item.additionalInfo)}</div>` : ""}
+      </div>
+      <button class="btn btn-red-soft" onclick="deleteTodo('${item.id}')">削除</button>
+    </div>`;
+  }).join("");
+}
+
+function renderScheduleList() {
+  document.getElementById("scheduleInputTitle").textContent = `📌 時間決まりの予定を登録 (${formatDisplayDate(selectedDate)})`;
+  const dayList = state.schedules.filter(x => x.date === selectedDate).sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const el = document.getElementById("dayScheduleList");
+  if (!dayList.length) {
+    el.innerHTML = `<div class="caption">選択日に登録された予定はありません</div>`;
+    return;
+  }
+  el.innerHTML = dayList.map(item => `
+    <div class="list-item">
+      <div style="flex:1">
+        <div class="row" style="margin-bottom:3px">
+          <input type="checkbox" ${item.isCompleted ? "checked" : ""} onchange="toggleSchedule('${item.id}')" style="width:18px;height:18px" />
+          <span class="caption bold" style="color:var(--indigo)">${esc(item.startTime)} 〜 ${esc(item.endTime)}</span>
+        </div>
+        <div class="bold ${item.isCompleted ? "strikethrough" : ""}" style="font-size:14px;margin-left:24px">${esc(item.title)}</div>
+        ${item.location ? `<div class="caption" style="margin-left:24px">📍 ${esc(item.location)}</div>` : ""}
+        ${item.note ? `<div class="caption" style="margin-left:24px">💬 ${esc(item.note)}</div>` : ""}
+      </div>
+      <button class="btn btn-red-soft" onclick="deleteSchedule('${item.id}')">削除</button>
+    </div>
+  `).join("");
+}
+
+// ==================== モーダル制御 ====================
+function openModal(title, html) {
+  destroyCharts();
+  document.getElementById("modalTitle").textContent = title;
+  document.getElementById("modalBody").innerHTML = html;
+  document.getElementById("modalBackdrop").classList.add("open");
+}
+function closeModal() {
+  destroyCharts();
+  document.getElementById("modalBackdrop").classList.remove("open");
+}
+function destroyCharts() {
+  activeCharts.forEach(c => c.destroy());
+  activeCharts = [];
+}
+
+// ==================== 上限・最低値設定モーダル ====================
+function openLimitModal() {
+  const cur = resolveLimitsForDate(selectedDate);
+  const histHtml = [...state.waterLimitHistory].sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate)).map(h => `
+    <div class="list-item">
+      <span class="caption bold">${esc(h.effectiveDate)}〜</span>
+      <span class="caption bold" style="color:var(--indigo)">最低値 ${Math.round(h.minLimit)}ml / 上限 ${Math.round(h.maxLimit)}ml</span>
+      ${state.waterLimitHistory.length > 1 ? `<button class="btn btn-red-soft" onclick="deleteLimitHistory('${h.id}')">削除</button>` : ""}
+    </div>
+  `).join("");
+
+  openModal("水分最低値・上限の設定", `
+    <div class="sub-box">
+      <div class="caption" style="margin-bottom:8px">変更を保存すると、適用開始日以降に新しい値が適用され、それ以前の過去データは当時の設定値のまま残ります。</div>
+      <div style="margin-bottom:8px">
+        <div class="caption bold">適用開始日 (変更当日)</div>
+        <input type="date" id="limitApplyDate" value="${selectedDate}" />
+      </div>
+      <div class="grid-2" style="margin-bottom:8px">
+        <div><div class="caption bold">最低値 (ml)</div><input type="number" id="limitMinInput" value="${Math.round(cur.minLimit)}" /></div>
+        <div><div class="caption bold">上限 (ml)</div><input type="number" id="limitMaxInput" value="${Math.round(cur.maxLimit)}" /></div>
+      </div>
+      <div class="row" style="margin-bottom:10px">
+        <button class="btn btn-indigo-soft" onclick="setLimitPreset(700,800)">700/800</button>
+        <button class="btn btn-indigo-soft" onclick="setLimitPreset(800,900)">800/900</button>
+        <button class="btn btn-indigo-soft" onclick="setLimitPreset(900,1000)">900/1000</button>
+        <button class="btn btn-indigo-soft" onclick="setLimitPreset(1000,1200)">1000/1200</button>
+      </div>
+      <button class="btn btn-indigo btn-full" onclick="confirmSaveLimit()">設定を変更する</button>
+    </div>
+    <div class="bold" style="font-size:13px;margin:10px 0 4px">これまでの設定変更履歴</div>
+    ${histHtml}
+  `);
+}
+function setLimitPreset(minV, maxV) {
+  document.getElementById("limitMinInput").value = minV;
+  document.getElementById("limitMaxInput").value = maxV;
+}
+function confirmSaveLimit() {
+  const applyDate = document.getElementById("limitApplyDate").value || selectedDate;
+  const minV = parseFloat(document.getElementById("limitMinInput").value);
+  const maxV = parseFloat(document.getElementById("limitMaxInput").value);
+  if (isNaN(minV) || minV <= 0 || isNaN(maxV) || maxV <= 0) return alert("正しい数値を入力してください。");
+  const cur = resolveLimitsForDate(applyDate);
+  if (Math.round(minV) === Math.round(cur.minLimit) && Math.round(maxV) === Math.round(cur.maxLimit)) {
+    alert("現在と同じ数値のため、これまでのグラフ・設定をそのまま維持します。");
+    closeModal();
+    return;
+  }
+  if (!confirm(`本当に変更しますか？\n\n${applyDate}以降の設定を「最低値 ${minV}ml / 上限 ${maxV}ml」に変更します。\n（※これより前の過去データは当時の設定値のまま残ります）`)) return;
+  mutateState(() => {
+    const idx = state.waterLimitHistory.findIndex(x => x.effectiveDate === applyDate);
+    if (idx >= 0) {
+      state.waterLimitHistory[idx].minLimit = minV;
+      state.waterLimitHistory[idx].maxLimit = maxV;
+    } else {
+      state.waterLimitHistory.push({ id: uid(), effectiveDate: applyDate, minLimit: minV, maxLimit: maxV });
+    }
+  });
+  closeModal();
+}
+function deleteLimitHistory(id) {
+  if (state.waterLimitHistory.length <= 1) return;
+  mutateState(() => { state.waterLimitHistory = state.waterLimitHistory.filter(x => x.id !== id); });
+  openLimitModal();
+}
+
+// ==================== 時間帯設定モーダル（前々日〜翌々日対応） ====================
+let draftBlocks = [];
+function openTimeBlockModal() {
+  draftBlocks = JSON.parse(JSON.stringify(state.timeBlocks));
+  renderTimeBlockModalBody();
+}
+function renderTimeBlockModalBody() {
+  const dayOpts = (sel) => DAY_OFFSETS.map(o => `<option value="${o.val}" ${Number(sel)===o.val?"selected":""}>${o.label}</option>`).join("");
+  const hourOpts = (sel) => Array.from({length:24}, (_,h) => `<option value="${h}" ${Number(sel)===h?"selected":""}>${h}時</option>`).join("");
+  const minOpts = (sel) => Array.from({length:60}, (_,m) => `<option value="${m}" ${Number(sel)===m?"selected":""}>${pad(m)}分</option>`).join("");
+
+  const rows = draftBlocks.map((b, i) => `
+    <div class="sub-box" style="border:1px solid var(--border)">
+      <div class="row" style="justify-content:space-between;margin-bottom:6px">
+        <input type="text" value="${esc(b.name)}" onchange="draftBlocks[${i}].name=this.value" style="flex:1" />
+        <button class="btn btn-red-soft" onclick="draftBlocks.splice(${i},1);renderTimeBlockModalBody()">削除</button>
+      </div>
+      <div class="caption bold" style="color:var(--indigo)">【開始】</div>
+      <div class="row" style="margin-bottom:6px">
+        <select onchange="draftBlocks[${i}].startDayOffset=Number(this.value)">${dayOpts(b.startDayOffset)}</select>
+        <select onchange="draftBlocks[${i}].startHour=Number(this.value)">${hourOpts(b.startHour)}</select>
+        <select onchange="draftBlocks[${i}].startMinute=Number(this.value)">${minOpts(b.startMinute)}</select>
+      </div>
+      <div class="caption bold" style="color:var(--blue)">【終了】</div>
+      <div class="row">
+        <select onchange="draftBlocks[${i}].endDayOffset=Number(this.value)">${dayOpts(b.endDayOffset)}</select>
+        <select onchange="draftBlocks[${i}].endHour=Number(this.value)">${hourOpts(b.endHour)}</select>
+        <select onchange="draftBlocks[${i}].endMinute=Number(this.value)">${minOpts(b.endMinute)}</select>
+      </div>
+    </div>
+  `).join("");
+
+  openModal("時間帯の詳細設定（前々日〜翌々日対応）", `
+    ${rows}
+    <button class="btn btn-indigo-soft btn-full" style="margin-bottom:10px" onclick="addDraftTimeBlock()">＋ 時間帯を新規追加</button>
+    <button class="btn btn-indigo btn-full" onclick="saveDraftTimeBlocks()">変更を保存</button>
+  `);
+}
+function addDraftTimeBlock() {
+  const last = draftBlocks[draftBlocks.length - 1];
+  const sDay = last ? last.endDayOffset : 0;
+  const sH = last ? last.endHour : 6;
+  const sM = last ? last.endMinute : 0;
+  let totalEnd = sDay * 1440 + sH * 60 + sM + 480;
+  const eDay = Math.min(2, Math.max(-2, Math.floor(totalEnd / 1440)));
+  const rem = ((totalEnd % 1440) + 1440) % 1440;
+  draftBlocks.push({ id: uid(), name: "新しい時間帯", startDayOffset: sDay, startHour: sH, startMinute: sM, endDayOffset: eDay, endHour: Math.floor(rem/60), endMinute: rem%60 });
+  renderTimeBlockModalBody();
+}
+function saveDraftTimeBlocks() {
+  if (!confirm("時間帯の変更を保存しますか？")) return;
+  mutateState(() => { state.timeBlocks = draftBlocks; });
+  closeModal();
+}
+
+// ==================== 推移グラフモーダル（1週間〜1年・基準線初期OFF・省略防止） ====================
+function getSpanDates(span, endStr) {
+  let startStr = endStr;
+  if (span === "1w") startStr = shiftDateStr(endStr, -6);
+  else if (span === "2w") startStr = shiftDateStr(endStr, -13);
+  else if (span === "1m") startStr = shiftMonthsStr(endStr, -1);
+  else if (span === "6m") startStr = shiftMonthsStr(endStr, -6);
+  else if (span === "1y") startStr = shiftMonthsStr(endStr, -12);
+  return { startStr, endStr };
+}
+
+function openGraphModal(customStart = null, customEnd = null) {
+  const range = (customStart && customEnd) ? { startStr: customStart, endStr: customEnd } : getSpanDates(graphSpan, selectedDate);
+  const spans = [
+    { k: "1w", l: "1週間" }, { k: "2w", l: "2週間" }, { k: "1m", l: "1ヶ月" },
+    { k: "6m", l: "半年" }, { k: "1y", l: "1年" }
+  ];
+
+  const html = `
+    <div class="sub-box">
+      <div class="pill-bar" style="margin-bottom:8px">
+        ${spans.map(s => `<button class="pill ${graphSpan===s.k?"active":""}" onclick="graphSpan='${s.k}';openGraphModal()">${s.l}</button>`).join("")}
+      </div>
+      <div class="row" style="justify-content:space-between">
+        <div class="row">
+          <input type="date" id="graphStartInput" value="${range.startStr}" onchange="openGraphModal(this.value, document.getElementById('graphEndInput').value)" />
+          <span>〜</span>
+          <input type="date" id="graphEndInput" value="${range.endStr}" onchange="openGraphModal(document.getElementById('graphStartInput').value, this.value)" />
+        </div>
+        <label class="row" style="font-size:12px;font-weight:700;cursor:pointer">
+          <input type="checkbox" ${showGraphRefLines?"checked":""} onchange="showGraphRefLines=this.checked;openGraphModal(document.getElementById('graphStartInput').value, document.getElementById('graphEndInput').value)" />
+          設定基準線を表示
+        </label>
+      </div>
+    </div>
+
+    <div style="margin-bottom:18px">
+      <div class="bold" style="margin-bottom:6px">💧 飲水量の推移</div>
+      <div id="waterChartWrap" class="sub-box"></div>
+    </div>
+    <div style="margin-bottom:18px">
+      <div class="bold" style="margin-bottom:6px">❤️ 血圧の推移 (日平均)</div>
+      <div id="bpChartWrap" class="sub-box"></div>
+    </div>
+    <div style="margin-bottom:18px">
+      <div class="bold" style="margin-bottom:6px">⚖️ 体重の推移 (測定時のみ)</div>
+      <div id="weightChartWrap" class="sub-box"></div>
+    </div>
+    <div style="margin-bottom:12px">
+      <div class="bold" style="margin-bottom:6px">🌡️ 体温の推移 (測定時のみ)</div>
+      <div id="tempChartWrap" class="sub-box"></div>
+    </div>
+  `;
+  openModal("📈 推移グラフ（期間切替・時系列）", html);
+
+  // 日次集計データ構築
+  const sStr = range.startStr <= range.endStr ? range.startStr : range.endStr;
+  const eStr = range.startStr <= range.endStr ? range.endStr : range.startStr;
+  const allDays = [];
+  let cur = sStr, guard = 0;
+  while (cur <= eStr && guard < 370) { allDays.push(cur); cur = shiftDateStr(cur, 1); guard++; }
+  const includeYear = allDays.length > 60;
+
+  const daily = allDays.map(d => {
+    const totalWater = state.waterEntries.filter(x => x.date === d).reduce((s, x) => s + x.amount, 0);
+    const lim = resolveLimitsForDate(d);
+    const bps = state.bpEntries.filter(x => x.date === d);
+    const avgSys = bps.length ? Math.round(bps.reduce((s, x) => s + x.systolic, 0) / bps.length) : null;
+    const avgDia = bps.length ? Math.round(bps.reduce((s, x) => s + x.diastolic, 0) / bps.length) : null;
+    return { date: d, label: formatMMdd(d, includeYear), totalWater, ...lim, avgSys, avgDia };
+  });
+
+  // 1. 飲水量グラフ（記録が0件のときは設定値だけを出さない）
+  const recWater = daily.filter(x => x.totalWater > 0);
+  const wTarget = allDays.length <= 14 ? (recWater.length ? daily : []) : recWater;
+  const wWrap = document.getElementById("waterChartWrap");
+  if (!wTarget.length) {
+    wWrap.innerHTML = `<div class="caption" style="padding:24px;text-align:center">この期間の飲水量記録はありません（記録を入力するとグラフが表示されます）</div>`;
+  } else {
+    const wPx = Math.max(wTarget.length * 52, 320);
+    wWrap.innerHTML = `<div class="chart-scroll"><div class="chart-box" style="width:${wPx}px"><canvas id="cWater"></canvas></div></div>`;
+    const datasets = [{
+      type: "bar", label: "飲水量(ml)",
+      data: wTarget.map(x => x.totalWater),
+      backgroundColor: wTarget.map(x => waterBarColor(x.totalWater, x.maxLimit, x.isLatest)),
+      borderRadius: 5
+    }];
+    if (showGraphRefLines) {
+      datasets.push(
+        { type: "line", label: "上限", data: wTarget.map(x => x.totalWater > 0 ? x.maxLimit : null), borderColor: "#ef4444", borderDash: [5,3], stepped: true, pointRadius: 0 },
+        { type: "line", label: "最低値", data: wTarget.map(x => x.totalWater > 0 ? x.minLimit : null), borderColor: "#16a34a", borderDash: [4,4], stepped: true, pointRadius: 0 }
+      );
+    }
+    activeCharts.push(new Chart(document.getElementById("cWater"), {
+      data: { labels: wTarget.map(x => x.label), datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: { x: { ticks: { autoSkip: false, maxRotation: 0, font: { size: 10 } } }, y: { beginAtZero: true } }
+      }
+    }));
+  }
+
+  // 2. 血圧グラフ
+  const recBP = daily.filter(x => x.avgSys !== null);
+  const bpTarget = allDays.length <= 14 ? (recBP.length ? daily : []) : recBP;
+  const bpWrap = document.getElementById("bpChartWrap");
+  if (!recBP.length) {
+    bpWrap.innerHTML = `<div class="caption" style="padding:24px;text-align:center">この期間の血圧記録はありません</div>`;
+  } else {
+    const bpPx = Math.max(bpTarget.length * 52, 320);
+    bpWrap.innerHTML = `<div class="chart-scroll"><div class="chart-box" style="width:${bpPx}px"><canvas id="cBP"></canvas></div></div>`;
+    const datasets = [
+      { label: "上(収縮期)", data: bpTarget.map(x => x.avgSys), borderColor: "#ef4444", backgroundColor: "#ef4444", spanGaps: true },
+      { label: "下(拡張期)", data: bpTarget.map(x => x.avgDia), borderColor: "#007aff", backgroundColor: "#007aff", spanGaps: true }
+    ];
+    if (showGraphRefLines) {
+      datasets.push(
+        { label: "上基準(140)", data: bpTarget.map(() => 140), borderColor: "rgba(239,68,68,0.4)", borderDash: [4,4], pointRadius: 0 },
+        { label: "下基準(90)", data: bpTarget.map(() => 90), borderColor: "rgba(0,122,255,0.4)", borderDash: [4,4], pointRadius: 0 }
+      );
+    }
+    activeCharts.push(new Chart(document.getElementById("cBP"), {
+      type: "line",
+      data: { labels: bpTarget.map(x => x.label), datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: { x: { ticks: { autoSkip: false, maxRotation: 0, font: { size: 10 } } } }
+      }
+    }));
+  }
+
+  // 3. 体重グラフ
+  const wPts = state.wtEntries.filter(x => x.weight !== null && x.date >= sStr && x.date <= eStr)
+    .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+  const wtWrap = document.getElementById("weightChartWrap");
+  if (!wPts.length) {
+    wtWrap.innerHTML = `<div class="caption" style="padding:24px;text-align:center">この期間の体重記録はありません</div>`;
+  } else {
+    const px = Math.max(wPts.length * 60, 320);
+    wtWrap.innerHTML = `<div class="chart-scroll"><div class="chart-box" style="width:${px}px"><canvas id="cWeight"></canvas></div></div>`;
+    const datasets = [{ label: "体重(kg)", data: wPts.map(x => x.weight), borderColor: "#4f46e5", backgroundColor: "#4f46e5" }];
+    if (showGraphRefLines && state.dryWeight > 0) {
+      datasets.push({ label: `DW(${state.dryWeight.toFixed(1)}kg)`, data: wPts.map(() => state.dryWeight), borderColor: "rgba(79,70,229,0.55)", borderDash: [5,4], pointRadius: 0 });
+    }
+    activeCharts.push(new Chart(document.getElementById("cWeight"), {
+      type: "line",
+      data: { labels: wPts.map(x => [formatMMdd(x.date, includeYear), x.time]), datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: { x: { ticks: { autoSkip: false, maxRotation: 0, font: { size: 9 } } } }
+      }
+    }));
+  }
+
+  // 4. 体温グラフ
+  const tPts = state.wtEntries.filter(x => x.temperature !== null && x.date >= sStr && x.date <= eStr)
+    .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+  const tWrap = document.getElementById("tempChartWrap");
+  if (!tPts.length) {
+    tWrap.innerHTML = `<div class="caption" style="padding:24px;text-align:center">この期間の体温記録はありません</div>`;
+  } else {
+    const px = Math.max(tPts.length * 60, 320);
+    tWrap.innerHTML = `<div class="chart-scroll"><div class="chart-box" style="width:${px}px"><canvas id="cTemp"></canvas></div></div>`;
+    const datasets = [{ label: "体温(℃)", data: tPts.map(x => x.temperature), borderColor: "#f97316", backgroundColor: "#f97316" }];
+    if (showGraphRefLines) {
+      datasets.push({ label: "37.0℃目安", data: tPts.map(() => 37.0), borderColor: "rgba(239,68,68,0.5)", borderDash: [4,4], pointRadius: 0 });
+    }
+    activeCharts.push(new Chart(document.getElementById("cTemp"), {
+      type: "line",
+      data: { labels: tPts.map(x => [formatMMdd(x.date, includeYear), x.time]), datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: { x: { ticks: { autoSkip: false, maxRotation: 0, font: { size: 9 } } } }
+      }
+    }));
+  }
+}
+
+// ==================== 全履歴・期間検索モーダル（水分 / 血圧 / 体重体温 / ToDo） ====================
+function openHistoryModal(kind) {
+  const defaultStart = shiftMonthsStr(todayStr(), -1);
+  const defaultEnd = kind === "todo" ? shiftMonthsStr(todayStr(), 1) : todayStr();
+  const titles = { water: "💧 水分の全履歴", bp: "❤️ 血圧の全履歴", wt: "⚖️ 体重・体温の全履歴", todo: "📝 ToDo・伝達メモの全履歴" };
+
+  openModal(titles[kind], `
+    <div class="sub-box">
+      <div class="row" style="margin-bottom:8px">
+        <input type="date" id="histStart" value="${defaultStart}" onchange="renderHistoryList('${kind}')" />
+        <span>〜</span>
+        <input type="date" id="histEnd" value="${defaultEnd}" onchange="renderHistoryList('${kind}')" />
+        <button class="btn btn-indigo-soft" onclick="setHistAll('${kind}')">全期間</button>
+      </div>
+      ${kind === "todo" ? `
+        <select id="histTodoAud" onchange="renderHistoryList('todo')" style="width:100%;font-size:13px">
+          <option value="all">すべての伝える先</option>
+          <option value="medicalStaff">🏥 医療関係者</option>
+          <option value="family">🏠 家族</option>
+          <option value="workplace">🏢 職場</option>
+          <option value="personal">📌 自分用</option>
+        </select>
+      ` : ""}
+    </div>
+    <div id="histSummaryBox" class="sub-box caption bold"></div>
+    <div id="histItemsContainer"></div>
+  `);
+  renderHistoryList(kind);
+}
+function setHistAll(kind) {
+  document.getElementById("histStart").value = "2020-01-01";
+  document.getElementById("histEnd").value = "2099-12-31";
+  renderHistoryList(kind);
+}
+function renderHistoryList(kind) {
+  const s = document.getElementById("histStart").value || "2020-01-01";
+  const e = document.getElementById("histEnd").value || "2099-12-31";
+  const box = document.getElementById("histItemsContainer");
+  const sum = document.getElementById("histSummaryBox");
+
+  if (kind === "water") {
+    const list = state.waterEntries.filter(x => x.date >= s && x.date <= e).sort((a,b) => `${b.date} ${b.startTime}`.localeCompare(`${a.date} ${a.startTime}`));
+    const total = list.reduce((acc, x) => acc + x.amount, 0);
+    sum.textContent = `該当件数: ${list.length}件 ／ 期間合計: ${Math.round(total)} ml`;
+    box.innerHTML = list.length ? list.map(x => `
+      <div class="list-item">
+        <div style="font-size:13px"><span class="bold">${x.date}</span> <span class="caption">${x.startTime}-${x.endTime}</span> <span class="bold" style="color:var(--indigo)">${Math.round(x.amount)}ml</span> ${esc(x.note)}</div>
+        <button class="btn btn-red-soft" onclick="deleteWaterEntry('${x.id}');renderHistoryList('water')">削除</button>
+      </div>`).join("") : `<div class="caption">該当する記録はありません</div>`;
+  } else if (kind === "bp") {
+    const list = state.bpEntries.filter(x => x.date >= s && x.date <= e).sort((a,b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
+    const avgS = list.length ? Math.round(list.reduce((a,x)=>a+x.systolic,0)/list.length) : 0;
+    const avgD = list.length ? Math.round(list.reduce((a,x)=>a+x.diastolic,0)/list.length) : 0;
+    sum.textContent = `総測定回数: ${list.length}回 ／ 期間平均: ${list.length ? `${avgS}/${avgD} mmHg` : "-"}`;
+    box.innerHTML = list.length ? list.map(x => `
+      <div class="list-item">
+        <div style="font-size:13px"><span class="bold">${x.date}</span> <span class="caption">${x.time}</span> <span class="bold" style="color:${(x.systolic>=140||x.diastolic>=90)?'var(--red)':'var(--text)'}">${x.systolic}/${x.diastolic}</span> ${x.pulse?`脈${x.pulse}`:""} ${esc(x.note)}</div>
+        <button class="btn btn-red-soft" onclick="deleteBPEntry('${x.id}');renderHistoryList('bp')">削除</button>
+      </div>`).join("") : `<div class="caption">該当する記録はありません</div>`;
+  } else if (kind === "wt") {
+    const list = state.wtEntries.filter(x => x.date >= s && x.date <= e).sort((a,b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`));
+    sum.textContent = `総測定回数: ${list.length}回`;
+    box.innerHTML = list.length ? list.map(x => `
+      <div class="list-item">
+        <div style="font-size:13px"><span class="bold">${x.date}</span> <span class="caption">${x.time}</span> ${x.weight!==null?`<span class="bold" style="color:var(--indigo)">${x.weight.toFixed(1)}kg</span>`:""} ${x.temperature!==null?`<span class="bold" style="color:var(--orange)">${x.temperature.toFixed(1)}℃</span>`:""} ${esc(x.note)}</div>
+        <button class="btn btn-red-soft" onclick="deleteWTEntry('${x.id}');renderHistoryList('wt')">削除</button>
+      </div>`).join("") : `<div class="caption">該当する記録はありません</div>`;
+  } else if (kind === "todo") {
+    const aud = document.getElementById("histTodoAud").value;
+    const list = state.todoItems.filter(x => {
+      const inRange = x.endDate >= s && x.date <= e;
+      return inRange && (aud === "all" || x.targetAudience === aud);
+    }).sort((a, b) => b.date.localeCompare(a.date));
+    sum.textContent = `該当ToDo: ${list.length}件`;
+    box.innerHTML = list.length ? list.map(x => {
+      const m = AUDIENCE_META[x.targetAudience] || AUDIENCE_META.personal;
+      const range = x.date === x.endDate ? formatMMdd(x.date) : `${formatMMdd(x.date)}〜${formatMMdd(x.endDate)}`;
+      return `<div class="list-item">
+        <div style="font-size:13px">
+          <div><span class="badge" style="background:${m.bg};color:${m.color}">${m.iconName}</span> <span class="caption bold">${range}</span></div>
+          <div class="bold ${x.isCompleted?"strikethrough":""}" style="margin-top:2px">${esc(x.symptomOrTask)}</div>
+          ${x.additionalInfo ? `<div class="caption">${esc(x.additionalInfo)}</div>` : ""}
+        </div>
+        <button class="btn btn-red-soft" onclick="deleteTodo('${x.id}');renderHistoryList('todo')">削除</button>
+      </div>`;
+    }).join("") : `<div class="caption">該当するToDoはありません</div>`;
+  }
+}
+
+// ==================== データ共有（JSONエクスポート・インポート） ====================
+function openBackupModal() {
+  openModal("⇅ データの書き出し・取り込み", `
+    <div class="sub-box">
+      <div class="bold" style="margin-bottom:6px">📤 バックアップファイル（JSON）を書き出す</div>
+      <div class="caption" style="margin-bottom:8px">現在のすべての記録をファイルに保存します。別のスマホ・iPad・PCへ移行する際にご利用ください。</div>
+      <button class="btn btn-indigo btn-full" onclick="exportBackupJSON()">JSONファイルをダウンロード</button>
+    </div>
+    <div class="sub-box">
+      <div class="bold" style="margin-bottom:6px">📥 バックアップファイル（JSON）を取り込む</div>
+      <div class="caption" style="margin-bottom:8px">書き出したJSONファイルを選択すると、データが復元されます。</div>
+      <input type="file" accept=".json,application/json" onchange="importBackupJSON(event)" />
+    </div>
+  `);
+}
+function exportBackupJSON() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `HealthAppBackup_${todayStr()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function importBackupJSON(ev) {
+  const file = ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      mutateState(() => { state = { ...state, ...parsed }; });
+      alert("データの取り込みが完了しました！");
+      closeModal();
+    } catch (e) {
+      alert("ファイルの読み込みに失敗しました。正しいJSONファイルを選択してください。");
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ==================== 初期化 ====================
+(function init() {
+  loadState();
+  document.getElementById("selectedDateInput").value = selectedDate;
+  setNowTime("wtTimeInput");
+  setWaterNow();
+  setNowTime("bpTimeInput");
+  setSchedNow();
+  syncTodoDatesToSelected();
+  renderTodoFormFields();
+  renderAll();
+})();
+</script>
+</body>
+</html>
